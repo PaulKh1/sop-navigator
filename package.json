@@ -1,0 +1,210 @@
+# 🚀 Розгортання SOP Navigator на Vercel
+
+## Передумови
+- GitHub акаунт (у вас вже є ✅)
+- Anthropic API ключ (отримаєте нижче)
+- Браузер для настройки
+
+---
+
+## Крок 1️⃣: Отримати Anthropic API ключ
+
+1. Перейдіть на https://console.anthropic.com
+2. Залогіньтеся або створіть акаунт
+3. В лівому меню знайдіть **API Keys**
+4. Натисніть **Create Key**
+5. Скопіюйте ключ в безпечне місце (він відображатиметься тільки один раз!)
+
+```
+Приклад ключа виглядає так:
+sk-ant-v0-abc123def456...
+```
+
+---
+
+## Крок 2️⃣: Підготувати файли проекту
+
+Вам потрібні ці файли в одній папці:
+
+```
+sop-navigator/
+├── api/
+│   └── sop-proxy.js          ← Backend функція
+├── public/
+│   └── index.html             ← HTML фронтенд
+├── package.json               ← Конфігурація Node.js
+├── vercel.json                ← Конфігурація Vercel
+└── .gitignore                 ← Ігнорувати файли
+```
+
+**Вже є в вас**: `api-sop-proxy.js`, `index-frontend.html`, `package.json`, `vercel.json`
+
+**Треба перейменувати**:
+- `api-sop-proxy.js` → поставити в папку `api/` з іменем `sop-proxy.js`
+- `index-frontend.html` → поставити в папку `public/` з іменем `index.html`
+
+**Створити `.gitignore`**:
+```
+node_modules/
+.env
+.env.local
+.DS_Store
+```
+
+---
+
+## Крок 3️⃣: Завантажити на GitHub
+
+### 3.1 Створити репозиторій на GitHub
+
+1. Перейдіть на https://github.com/new
+2. Назвіть репозиторій: `sop-navigator`
+3. Виберіть **Public** (для простоти)
+4. Натисніть **Create repository**
+
+### 3.2 Залити файли через GitHub Web
+
+1. На сторінці вашого репозиторію натисніть **Add file** → **Upload files**
+2. Загрузіть всі файли проекту:
+   - папка `api/` з файлом `sop-proxy.js`
+   - папка `public/` з файлом `index.html`
+   - `package.json`
+   - `vercel.json`
+   - `.gitignore`
+
+3. Натисніть **Commit changes**
+
+**Альтернатива (якщо зручно через Git)**:
+```bash
+git clone https://github.com/YOUR_USERNAME/sop-navigator.git
+cd sop-navigator
+
+# Скопіюйте файли в папку
+
+git add .
+git commit -m "Initial commit: SOP Navigator setup"
+git push
+```
+
+---
+
+## Крок 4️⃣: Підключити до Vercel
+
+### 4.1 Авторизуватися на Vercel
+
+1. Перейдіть на https://vercel.com
+2. Натисніть **Sign Up** або **Log In**
+3. Виберіть **Continue with GitHub**
+4. Авторизуйте Vercel для доступу до GitHub
+
+### 4.2 Імпортувати проект
+
+1. На дашборді Vercel натисніть **New Project**
+2. Виберіть репозиторій `sop-navigator`
+3. Натисніть **Import**
+4. На сторінці конфігурації все залишається за замовчуванням
+5. Натисніть **Deploy**
+
+### 4.3 Додати Environment Variable (API ключ)
+
+Поки Deploy йде:
+
+1. Перейдіть на сторінку проекту в Vercel
+2. Клікніть **Settings**
+3. В лівому меню виберіть **Environment Variables**
+4. Натисніть **Add New**
+5. Заповніть:
+   - **Name**: `ANTHROPIC_API_KEY`
+   - **Value**: (вставте ваш ключ зі Крок 1)
+   - **Environments**: выберіть **Production**, **Preview**, **Development**
+
+6. Натисніть **Save**
+
+---
+
+## Крок 5️⃣: Перезапустити Deploy
+
+Після додання Environment Variable потрібно перезапустити:
+
+1. На сторінці проекту натисніть **Deployments**
+2. Знайдіть останній Deploy (повинен бути)
+3. Натисніть на нього → **Redeploy**
+
+Почекайте завершення Deploy (зазвичай 1-2 хвилини).
+
+---
+
+## Крок 6️⃣: Тестування
+
+Коли Deploy завершиться:
+
+1. Натисніть **Visit** або скопіюйте URL (виглядає так: `https://sop-navigator-XXXXX.vercel.app`)
+2. Додаток повинен завантажитися та показати "Завантаження структури папок..."
+3. Через кілька секунд мають з'явитися категорії СОПів
+
+---
+
+## 🐛 Troubleshooting
+
+### "Failed to fetch" помилка
+
+**Причина**: API ключ не встановлений або неправильний
+
+**Рішення**:
+1. Перевірте, чи коректно скопійовано ключ (без пробілів)
+2. Перевірте, чи ключ у Environment Variables Vercel
+3. Перезапустіть Deploy (Deployments → Redeploy)
+
+### "No JSON found in response"
+
+**Причина**: Anthropic API не знаходить папку Google Drive або MCP не працює
+
+**Рішення**:
+1. Перевірте, чи папка доступна за ID: `1z37M1cgaYuayt9F48pNoDqhDIQbPd7Ib`
+2. Переконайтеся, що в папці є файли Word
+
+### Додаток не завантажується взагалі
+
+**Причина**: Frontend HTML не служиться
+
+**Рішення**:
+1. Перевірте, чи файл `index.html` в папці `public/`
+2. Перевірте структуру папок у GitHub
+3. Перезапустіть Deploy
+
+---
+
+## 📋 Корисні посилання
+
+- Vercel Dashboard: https://vercel.com/dashboard
+- Anthropic Console: https://console.anthropic.com
+- GitHub Repo: https://github.com/YOUR_USERNAME/sop-navigator
+- Ваш додаток: https://sop-navigator-XXXXX.vercel.app
+
+---
+
+## ✅ Готово!
+
+Після завершення всіх кроків додаток буде працювати на URL типу:
+```
+https://sop-navigator-abc123.vercel.app
+```
+
+Поділіться цим URL зі своєю командою на ДЗМК — вони зможуть легко знайти потрібні СОПи! 🎉
+
+---
+
+## 💡 Додаткові опції
+
+### Власний домен
+Якщо хочете власний домен (наприклад, `sops.dzmk.org.ua`):
+1. В Vercel Settings → Domains
+2. Додайте домен
+3. Налаштуйте DNS у вашого провайдера
+
+### Встановити автозапуск при змінах
+Vercel автоматично розгортає нову версію при кожному `git push` в main гілку! 🚀
+
+---
+
+**Якщо щось не виходить — пишіть, допоможу!** 😊
