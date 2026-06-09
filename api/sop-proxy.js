@@ -1,16 +1,18 @@
 // api/sop-proxy.js
-// Vercel Serverless Function that proxies frontend requests to OpenAI.
+// Vercel Serverless Function that reads a public Google Drive folder.
 
-const MODEL = 'gpt-5';
+const DRIVE_API = 'https://www.googleapis.com/drive/v3/files';
+const WORD_MIME_TYPES = new Set([
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+]);
+const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
-  );
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
     res.status(200).end();
@@ -22,99 +24,43 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { folderId, googleAccessToken: requestGoogleAccessToken } = req.body || {};
-    const googleAccessToken = process.env.GOOGLE_DRIVE_ACCESS_TOKEN || requestGoogleAccessToken;
+    const { folderId } = req.body || {};
+    const apiKey = process.env.GOOGLE_API_KEY;
 
     if (!folderId) {
       return res.status(400).json({ error: 'folderId is required' });
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      return res.status(500).json({ error: 'OPENAI_API_KEY is not configured' });
+      return res.status(500).json({ error: 'GOOGLE_API_KEY is not configured' });
     }
 
-    if (!googleAccessToken) {
-      return res.status(500).json({
-        error:
-          'Google Drive access is not configured. Add GOOGLE_DRIVE_ACCESS_TOKEN or send googleAccessToken in the request.',
+    const folders = await listChildren(folderId, apiKey, FOLDER_MIME_TYPE);
+    const results = [];
+    let totalFiles = 0;
+
+    for (const folder of folders) {
+      const files = await listChildren(folder.id, apiKey);
+      const wordFiles = files
+        .filter((file) => isWordFile(file))
+        .map((file) => ({
+          id: file.id,
+          name: file.name,
+          url: file.webViewLink || `https://drive.google.com/file/d/${file.id}/view`,
+        }));
+
+      totalFiles += wordFiles.length;
+      results.push({
+        id: folder.id,
+        name: folder.name,
+        files: wordFiles,
       });
     }
 
-    const tools = [];
-    tools.push({
-      type: 'mcp',
-      server_label: 'google_drive',
-      connector_id: 'connector_googledrive',
-      authorization: googleAccessToken,
-      require_approval: 'never',
+    return res.status(200).json({
+      folders: results,
+      totalFiles,
     });
-
-    const response = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_output_tokens: 4000,
-        tools,
-        instructions:
-          'You are a SOP navigator. Return only valid JSON. Do not include Markdown, explanations, or extra text.',
-        input: `Analyze the Google Drive folder with ID: ${folderId}.
-
-Return this exact JSON structure:
-{
-  "folders": [
-    {
-      "id": "folder_id",
-      "name": "Category name",
-      "files": [
-        {
-          "id": "file_id",
-          "name": "SOP name",
-          "url": "https://drive.google.com/file/d/FILE_ID/view"
-        }
-      ]
-    }
-  ],
-  "totalFiles": 0
-}
-
-Find subfolders as SOP categories. For each category, include Word documents only (.docx, .doc).`,
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      console.error('OpenAI API error:', data);
-      return res.status(response.status).json({
-        error: 'Failed to fetch from OpenAI API',
-        details: data,
-      });
-    }
-
-    const responseText =
-      data.output_text ||
-      (Array.isArray(data.output)
-        ? data.output
-            .flatMap((item) => item.content || [])
-            .filter((content) => content.type === 'output_text' && content.text)
-            .map((content) => content.text)
-            .join('')
-        : '');
-
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      return res.status(400).json({
-        error: 'No JSON found in response',
-        rawResponse: responseText.substring(0, 500),
-      });
-    }
-
-    return res.status(200).json(JSON.parse(jsonMatch[0]));
   } catch (error) {
     console.error('Error:', error);
     return res.status(500).json({
@@ -123,3 +69,36 @@ Find subfolders as SOP categories. For each category, include Word documents onl
   }
 }
 
+async function listChildren(parentId, apiKey, mimeType) {
+  const queryParts = [`'${parentId}' in parents`, 'trashed = false'];
+  if (mimeType) {
+    queryParts.push(`mimeType = '${mimeType}'`);
+  }
+
+  const params = new URLSearchParams({
+    key: apiKey,
+    q: queryParts.join(' and '),
+    fields: 'files(id,name,mimeType,webViewLink)',
+    pageSize: '1000',
+    supportsAllDrives: 'true',
+    includeItemsFromAllDrives: 'true',
+  });
+
+  const response = await fetch(`${DRIVE_API}?${params.toString()}`);
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error?.message || 'Failed to read Google Drive folder');
+  }
+
+  return data.files || [];
+}
+
+function isWordFile(file) {
+  const lowerName = file.name.toLowerCase();
+  return (
+    WORD_MIME_TYPES.has(file.mimeType) ||
+    lowerName.endsWith('.doc') ||
+    lowerName.endsWith('.docx')
+  );
+}
