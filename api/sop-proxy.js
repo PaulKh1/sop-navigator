@@ -2,10 +2,6 @@
 // Vercel Serverless Function that reads a public Google Drive folder.
 
 const DRIVE_API = 'https://www.googleapis.com/drive/v3/files';
-const WORD_MIME_TYPES = new Set([
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-]);
 const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
 
 export default async function handler(req, res) {
@@ -40,20 +36,19 @@ export default async function handler(req, res) {
     let totalFiles = 0;
 
     for (const folder of folders) {
-      const files = await listChildren(folder.id, apiKey);
-      const wordFiles = files
-        .filter((file) => isWordFile(file))
+      const files = await listFilesRecursive(folder.id, apiKey);
+      const visibleFiles = files
         .map((file) => ({
           id: file.id,
-          name: file.name,
+          name: file.path ? `${file.path} / ${file.name}` : file.name,
           url: file.webViewLink || `https://drive.google.com/file/d/${file.id}/view`,
         }));
 
-      totalFiles += wordFiles.length;
+      totalFiles += visibleFiles.length;
       results.push({
         id: folder.id,
         name: folder.name,
-        files: wordFiles,
+        files: visibleFiles,
       });
     }
 
@@ -94,11 +89,22 @@ async function listChildren(parentId, apiKey, mimeType) {
   return data.files || [];
 }
 
-function isWordFile(file) {
-  const lowerName = file.name.toLowerCase();
-  return (
-    WORD_MIME_TYPES.has(file.mimeType) ||
-    lowerName.endsWith('.doc') ||
-    lowerName.endsWith('.docx')
-  );
+async function listFilesRecursive(folderId, apiKey, path = '') {
+  const children = await listChildren(folderId, apiKey);
+  const files = [];
+
+  for (const item of children) {
+    if (item.mimeType === FOLDER_MIME_TYPE) {
+      const nestedPath = path ? `${path} / ${item.name}` : item.name;
+      const nestedFiles = await listFilesRecursive(item.id, apiKey, nestedPath);
+      files.push(...nestedFiles);
+    } else {
+      files.push({
+        ...item,
+        path,
+      });
+    }
+  }
+
+  return files;
 }
